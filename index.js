@@ -16,6 +16,7 @@ const pool = new Pool({
 
 // ── PRODUCTOS ──
 
+// 1. GET: Listar todos los productos
 app.get('/api/productos', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM danese_productos ORDER BY creado_en DESC');
@@ -25,21 +26,45 @@ app.get('/api/productos', async (req, res) => {
   }
 });
 
+// 2. POST: Crear un nuevo producto
 app.post('/api/productos', async (req, res) => {
   try {
-    const { nombre, marca, precio_minorista_ars, precio_mayorista_usd, categoria, imagen_url, descripcion, talles, destacado, mas_vendido } = req.body;
+    const {
+      nombre,
+      marca,
+      precio_minorista_ars,
+      precio_mayorista_usd,
+      categoria,
+      imagen_url,
+      descripcion,
+      talles,
+      destacado,
+      mas_vendido,
+      sin_stock,
+    } = req.body;
+
     const query = `
       INSERT INTO danese_productos (
         nombre, marca, precio_minorista_ars, precio_mayorista_usd,
-        categoria, imagen_url, descripcion, talles, destacado, mas_vendido
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        categoria, imagen_url, descripcion, talles, destacado, mas_vendido, sin_stock
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING *;
     `;
+
     const values = [
-      nombre, marca || null, Number(precio_minorista_ars) || 0, Number(precio_mayorista_usd) || 0,
-      categoria || null, imagen_url || null, descripcion || null,
-      Array.isArray(talles) ? talles : [], Boolean(destacado), Boolean(mas_vendido),
+      nombre,
+      marca || null,
+      Number(precio_minorista_ars) || 0,
+      Number(precio_mayorista_usd) || 0,
+      categoria || null,
+      imagen_url || null,
+      descripcion || null,
+      Array.isArray(talles) ? talles : [],
+      Boolean(destacado),
+      Boolean(mas_vendido),
+      Boolean(sin_stock),
     ];
+
     const result = await pool.query(query, values);
     res.status(201).json(result.rows[0]);
   } catch (error) {
@@ -47,10 +72,24 @@ app.post('/api/productos', async (req, res) => {
   }
 });
 
+// 3. PUT: Actualizar producto (editar datos, togglear stock)
 app.put('/api/productos/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { nombre, marca, precio_minorista_ars, precio_mayorista_usd, categoria, imagen_url, descripcion, talles, destacado, mas_vendido } = req.body;
+    const {
+      nombre,
+      marca,
+      precio_minorista_ars,
+      precio_mayorista_usd,
+      categoria,
+      imagen_url,
+      descripcion,
+      talles,
+      destacado,
+      mas_vendido,
+      sin_stock,
+    } = req.body;
+
     const query = `
       UPDATE danese_productos SET
         nombre = COALESCE($1, nombre),
@@ -62,22 +101,38 @@ app.put('/api/productos/:id', async (req, res) => {
         descripcion = COALESCE($7, descripcion),
         talles = COALESCE($8, talles),
         destacado = COALESCE($9, destacado),
-        mas_vendido = COALESCE($10, mas_vendido)
-      WHERE id = $11
+        mas_vendido = COALESCE($10, mas_vendido),
+        sin_stock = COALESCE($11, sin_stock)
+      WHERE id = $12
       RETURNING *;
     `;
+
     const values = [
-      nombre, marca, Number(precio_minorista_ars), Number(precio_mayorista_usd),
-      categoria, imagen_url, descripcion, Array.isArray(talles) ? talles : null,
-      destacado, mas_vendido, id
+      nombre !== undefined ? nombre : null,
+      marca !== undefined ? marca : null,
+      precio_minorista_ars !== undefined ? Number(precio_minorista_ars) : null,
+      precio_mayorista_usd !== undefined ? Number(precio_mayorista_usd) : null,
+      categoria !== undefined ? categoria : null,
+      imagen_url !== undefined ? imagen_url : null,
+      descripcion !== undefined ? descripcion : null,
+      Array.isArray(talles) ? talles : null,
+      destacado !== undefined ? Boolean(destacado) : null,
+      mas_vendido !== undefined ? Boolean(mas_vendido) : null,
+      sin_stock !== undefined ? Boolean(sin_stock) : null,
+      id,
     ];
+
     const result = await pool.query(query, values);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Producto no encontrado' });
+    }
     res.json(result.rows[0]);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
+// 4. DELETE: Eliminar producto
 app.delete('/api/productos/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -88,6 +143,7 @@ app.delete('/api/productos/:id', async (req, res) => {
   }
 });
 
+// 5. POST BATCH: Carga masiva desde Excel
 app.post('/api/productos/batch', async (req, res) => {
   const client = await pool.connect();
   try {
@@ -99,15 +155,21 @@ app.post('/api/productos/batch', async (req, res) => {
       const query = `
         INSERT INTO danese_productos (
           nombre, marca, precio_minorista_ars, precio_mayorista_usd,
-          categoria, imagen_url, descripcion, talles, destacado, mas_vendido
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          categoria, imagen_url, descripcion, talles, destacado, mas_vendido, sin_stock
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       `;
       const values = [
-        p.nombre, p.marca || 'Danese', Number(p.precio_minorista_ars) || 0,
-        Number(p.precio_mayorista_usd) || 0, p.categoria || null,
-        p.imagen_url || null, p.descripcion || null,
+        p.nombre,
+        p.marca || 'Danese',
+        Number(p.precio_minorista_ars) || 0,
+        Number(p.precio_mayorista_usd) || 0,
+        p.categoria || null,
+        p.imagen_url || null,
+        p.descripcion || null,
         Array.isArray(p.talles) ? p.talles : [],
-        Boolean(p.destacado), Boolean(p.mas_vendido)
+        Boolean(p.destacado),
+        Boolean(p.mas_vendido),
+        Boolean(p.sin_stock),
       ];
       await client.query(query, values);
     }
@@ -123,6 +185,7 @@ app.post('/api/productos/batch', async (req, res) => {
 
 // ── CATEGORÍAS ──
 
+// 6. GET: Listar categorías
 app.get('/api/categorias', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM danese_categorias ORDER BY creado_en ASC');
@@ -132,6 +195,7 @@ app.get('/api/categorias', async (req, res) => {
   }
 });
 
+// 7. POST: Crear / Actualizar categoría (Upsert)
 app.post('/api/categorias', async (req, res) => {
   try {
     const { id, nombre, icono, imagen_url } = req.body;
@@ -151,6 +215,7 @@ app.post('/api/categorias', async (req, res) => {
   }
 });
 
+// 8. DELETE: Eliminar categoría
 app.delete('/api/categorias/:id', async (req, res) => {
   try {
     const { id } = req.params;
