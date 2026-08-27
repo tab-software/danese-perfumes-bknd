@@ -14,7 +14,8 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
 
-// 1. GET: Listar productos
+// ── PRODUCTOS ──
+
 app.get('/api/productos', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM danese_productos ORDER BY creado_en DESC');
@@ -24,7 +25,6 @@ app.get('/api/productos', async (req, res) => {
   }
 });
 
-// 2. POST: Crear un producto
 app.post('/api/productos', async (req, res) => {
   try {
     const { nombre, marca, precio_minorista_ars, precio_mayorista_usd, categoria, imagen_url, descripcion, talles, destacado, mas_vendido } = req.body;
@@ -47,7 +47,6 @@ app.post('/api/productos', async (req, res) => {
   }
 });
 
-// 3. PUT: Actualizar producto (stock, precios, datos)
 app.put('/api/productos/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -79,7 +78,6 @@ app.put('/api/productos/:id', async (req, res) => {
   }
 });
 
-// 4. DELETE: Eliminar producto
 app.delete('/api/productos/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -90,7 +88,6 @@ app.delete('/api/productos/:id', async (req, res) => {
   }
 });
 
-// 5. POST BATCH: Importación masiva desde Excel
 app.post('/api/productos/batch', async (req, res) => {
   const client = await pool.connect();
   try {
@@ -124,6 +121,46 @@ app.post('/api/productos/batch', async (req, res) => {
   }
 });
 
+// ── CATEGORÍAS ──
+
+app.get('/api/categorias', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM danese_categorias ORDER BY creado_en ASC');
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/categorias', async (req, res) => {
+  try {
+    const { id, nombre, icono, imagen_url } = req.body;
+    const query = `
+      INSERT INTO danese_categorias (id, nombre, icono, imagen_url)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (id) DO UPDATE SET
+        nombre = EXCLUDED.nombre,
+        icono = EXCLUDED.icono,
+        imagen_url = EXCLUDED.imagen_url
+      RETURNING *;
+    `;
+    const result = await pool.query(query, [id, nombre, icono || '✨', imagen_url || null]);
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/categorias/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('DELETE FROM danese_categorias WHERE id = $1', [id]);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`API Danese corriendo en el puerto ${PORT}`);
+  console.log(`API Danese lista en puerto ${PORT}`);
 });
