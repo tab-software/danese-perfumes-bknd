@@ -14,7 +14,9 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
 
-// ── PRODUCTOS ──
+// ==========================================
+// ── SECCIÓN 1: DANESE PERFUMES ──
+// ==========================================
 
 // 1. GET: Listar todos los productos
 app.get('/api/productos', async (req, res) => {
@@ -72,7 +74,7 @@ app.post('/api/productos', async (req, res) => {
   }
 });
 
-// 3. PUT: Actualizar producto (editar datos, togglear stock)
+// 3. PUT: Actualizar producto
 app.put('/api/productos/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -143,7 +145,7 @@ app.delete('/api/productos/:id', async (req, res) => {
   }
 });
 
-// 5. POST BATCH: Carga masiva desde Excel
+// 5. POST BATCH: Carga masiva Danese
 app.post('/api/productos/batch', async (req, res) => {
   const client = await pool.connect();
   try {
@@ -183,9 +185,7 @@ app.post('/api/productos/batch', async (req, res) => {
   }
 });
 
-// ── CATEGORÍAS ──
-
-// 6. GET: Listar categorías
+// 6. GET: Listar categorías Danese
 app.get('/api/categorias', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM danese_categorias ORDER BY creado_en ASC');
@@ -195,7 +195,7 @@ app.get('/api/categorias', async (req, res) => {
   }
 });
 
-// 7. POST: Crear / Actualizar categoría (Upsert)
+// 7. POST: Upsert categoría Danese
 app.post('/api/categorias', async (req, res) => {
   try {
     const { id, nombre, icono, imagen_url } = req.body;
@@ -215,7 +215,7 @@ app.post('/api/categorias', async (req, res) => {
   }
 });
 
-// 8. DELETE: Eliminar categoría
+// 8. DELETE: Eliminar categoría Danese
 app.delete('/api/categorias/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -226,6 +226,206 @@ app.delete('/api/categorias/:id', async (req, res) => {
   }
 });
 
+
+// ==========================================
+// ── SECCIÓN 2: LA CARROZADA (PANADERÍA) ──
+// ==========================================
+
+// 9. GET: Listar productos de La Carrozada
+app.get('/api/carrozada/productos', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM carrozada_productos ORDER BY creado_en DESC');
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 10. POST: Crear un nuevo producto en La Carrozada (solo ARS)
+app.post('/api/carrozada/productos', async (req, res) => {
+  try {
+    const {
+      nombre,
+      categoria,
+      precio_ars,
+      imagen_url,
+      descripcion,
+      variantes,
+      destacado,
+      mas_vendido,
+      sin_stock,
+    } = req.body;
+
+    const query = `
+      INSERT INTO carrozada_productos (
+        nombre, categoria, precio_ars, imagen_url, descripcion, variantes, destacado, mas_vendido, sin_stock
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      RETURNING *;
+    `;
+
+    const values = [
+      nombre,
+      categoria || null,
+      Number(precio_ars) || 0,
+      imagen_url || null,
+      descripcion || null,
+      Array.isArray(variantes) ? variantes : [],
+      Boolean(destacado),
+      Boolean(mas_vendido),
+      Boolean(sin_stock),
+    ];
+
+    const result = await pool.query(query, values);
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 11. PUT: Actualizar producto de La Carrozada
+app.put('/api/carrozada/productos/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      nombre,
+      categoria,
+      precio_ars,
+      imagen_url,
+      descripcion,
+      variantes,
+      destacado,
+      mas_vendido,
+      sin_stock,
+    } = req.body;
+
+    const query = `
+      UPDATE carrozada_productos SET
+        nombre = COALESCE($1, nombre),
+        categoria = COALESCE($2, categoria),
+        precio_ars = COALESCE($3, precio_ars),
+        imagen_url = COALESCE($4, imagen_url),
+        descripcion = COALESCE($5, descripcion),
+        variantes = COALESCE($6, variantes),
+        destacado = COALESCE($7, destacado),
+        mas_vendido = COALESCE($8, mas_vendido),
+        sin_stock = COALESCE($9, sin_stock)
+      WHERE id = $10
+      RETURNING *;
+    `;
+
+    const values = [
+      nombre !== undefined ? nombre : null,
+      categoria !== undefined ? categoria : null,
+      precio_ars !== undefined ? Number(precio_ars) : null,
+      imagen_url !== undefined ? imagen_url : null,
+      descripcion !== undefined ? descripcion : null,
+      Array.isArray(variantes) ? variantes : null,
+      destacado !== undefined ? Boolean(destacado) : null,
+      mas_vendido !== undefined ? Boolean(mas_vendido) : null,
+      sin_stock !== undefined ? Boolean(sin_stock) : null,
+      id,
+    ];
+
+    const result = await pool.query(query, values);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Producto no encontrado' });
+    }
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 12. DELETE: Eliminar producto de La Carrozada
+app.delete('/api/carrozada/productos/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('DELETE FROM carrozada_productos WHERE id = $1', [id]);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 13. POST BATCH: Carga masiva La Carrozada
+app.post('/api/carrozada/productos/batch', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { productos } = req.body;
+    if (!Array.isArray(productos)) return res.status(400).json({ error: 'Array requerido' });
+
+    await client.query('BEGIN');
+    for (const p of productos) {
+      const query = `
+        INSERT INTO carrozada_productos (
+          nombre, categoria, precio_ars, imagen_url, descripcion, variantes, destacado, mas_vendido, sin_stock
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `;
+      const values = [
+        p.nombre,
+        p.categoria || null,
+        Number(p.precio_ars) || 0,
+        p.imagen_url || null,
+        p.descripcion || null,
+        Array.isArray(p.variantes) ? p.variantes : [],
+        Boolean(p.destacado),
+        Boolean(p.mas_vendido),
+        Boolean(p.sin_stock),
+      ];
+      await client.query(query, values);
+    }
+    await client.query('COMMIT');
+    res.json({ success: true, count: productos.length });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: error.message });
+  } finally {
+    client.release();
+  }
+});
+
+// 14. GET: Listar categorías de La Carrozada
+app.get('/api/carrozada/categorias', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM carrozada_categorias ORDER BY creado_en ASC');
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 15. POST: Upsert categoría de La Carrozada
+app.post('/api/carrozada/categorias', async (req, res) => {
+  try {
+    const { id, nombre, icono, imagen_url } = req.body;
+    const query = `
+      INSERT INTO carrozada_categorias (id, nombre, icono, imagen_url)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (id) DO UPDATE SET
+        nombre = EXCLUDED.nombre,
+        icono = EXCLUDED.icono,
+        imagen_url = EXCLUDED.imagen_url
+      RETURNING *;
+    `;
+    const result = await pool.query(query, [id, nombre, icono || '🥖', imagen_url || null]);
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 16. DELETE: Eliminar categoría de La Carrozada
+app.delete('/api/carrozada/categorias/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('DELETE FROM carrozada_categorias WHERE id = $1', [id]);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ── INICIALIZAR SERVIDOR ──
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`API Danese lista en puerto ${PORT}`);
+  console.log(`Servidor API activo en el puerto ${PORT}`);
 });
